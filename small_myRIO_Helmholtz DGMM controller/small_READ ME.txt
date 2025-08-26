@@ -1,0 +1,11 @@
+1. Power on myRIO
+2. Open project lvproj
+3. Open desktop vi
+4. Open RT vi
+5. Run RT vi
+6. Run desktop vi
+7. Select magnetic field type
+8. Set magnetic field
+9. Pause button to pause magnetic field
+
+10. Click stop
