@@ -1,5 +1,5 @@
 # Automatic navigation of robotic catheter in dynamic environments based on reinforcement learning
-Integrated Transformer Perception for Reinforcement Learning for Robotic Catheter Navigation in Dynamic Environments
+Integrated Transformer-based Perception for Reinforcement Learning for Robotic Catheter Navigation in Dynamic Environments
 
 ## Experimental results of dynamic obstacle avoidance in a maze
 <video src="https://github.com/user-attachments/assets/d83ec0e0-d45f-452d-8c4a-249dda71a7c9" controls loop muted playsinline autoplay style="max-width: 480px; width: 100%;"></video>
