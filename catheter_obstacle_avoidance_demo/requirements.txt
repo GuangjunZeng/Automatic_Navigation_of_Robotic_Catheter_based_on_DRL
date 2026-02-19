@@ -1,0 +1,25 @@
+# 3D Catheter Simulation Dependencies
+
+# === 核心依赖 ===
+numpy>=1.20.0
+scipy>=1.7.0
+
+# === PyVista版本 (推荐用于快速可视化) ===
+pyvista>=0.40.0
+# vtk  # pyvista会自动安装
+
+# === PyBullet版本 (推荐用于物理仿真和RL训练) ===
+pybullet>=3.2.5
+
+# === 2D版本 (简单演示) ===
+pygame>=2.1.0
+
+# === 可选：用于更好的渲染 ===
+# pythreejs  # Jupyter 3D渲染
+# trimesh    # 3D网格处理
+# matplotlib # 简单3D绘图
+
+# === 可选：用于强化学习训练 ===
+# gymnasium>=0.28.0
+# stable-baselines3>=2.0.0
+# torch>=2.0.0
