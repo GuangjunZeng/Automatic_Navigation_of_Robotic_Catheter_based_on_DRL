@@ -1,6 +1,6 @@
 # Automatic navigation of robotic catheter in dynamic environments based on reinforcement learning
 
-Reinforcement Learning for Robotic Catheter Navigation in Dynamic Environments
+Reinforcement Learning for Robotic Catheter Navigation in Dynamic Environments 
 
 ## Control Framework
 ![control framework](control%20framework.jpg)

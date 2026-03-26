@@ -1,4 +1,4 @@
-# test_microdrill.py
+# test_catheter.py
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
@@ -14,7 +14,7 @@ import torch.nn as nn
 
 # 你的其他代码...
 
-class TestMicroDrillEnv(gym.Env):
+class TestCatheterEnv(gym.Env):
     """测试专用环境（添加可视化功能）"""
 
     metadata = {"render_modes": ["human"], "render_fps": 30}
@@ -27,8 +27,8 @@ class TestMicroDrillEnv(gym.Env):
         self.ax = None
 
         # 初始化关键属性
-        self.drill_theta = 0.0  # 初始方向
-        self.drill_radius = 5  # 尖端半径
+        self.catheter_tip_theta = 0.0  # 初始方向
+        self.catheter_tip_radius = 5  # 尖端半径
         self.dt = 0.7  # 时间步长（秒）
 
         # 根据 III-A1节初始化参数
@@ -39,7 +39,7 @@ class TestMicroDrillEnv(gym.Env):
 
         # 根据 表II设置随机化范围
         self.param_ranges = {
-            'microdrill_speed': (9, 15),
+            'catheter_tip_speed': (9, 15),
             'num_obstacles': (6, 18),
             'goal_radius': (3, 7)
         }
@@ -59,13 +59,13 @@ class TestMicroDrillEnv(gym.Env):
         self.action_space = spaces.Box(
             low= -1, high= 1, shape=(1,), dtype=np.float32)
 
-        # 初始化物理参数: microdrill_speed, num_obstacles, goal_radius
+        # 初始化物理参数: catheter_tip_speed, num_obstacles, goal_radius
         self._randomize_parameters()
 
     def _randomize_parameters(self):
         """实现 III-B节的域随机化"""
         # 从表II中采样参数
-        self.microdrill_speed = np.random.uniform(*self.param_ranges['microdrill_speed'])
+        self.catheter_tip_speed = np.random.uniform(*self.param_ranges['catheter_tip_speed'])
         self.num_obstacles = np.random.randint(*self.param_ranges['num_obstacles'])
         self.goal_radius = np.random.uniform(*self.param_ranges['goal_radius'])
 
@@ -90,8 +90,8 @@ class TestMicroDrillEnv(gym.Env):
             y = np.random.uniform(20 * self.env_height / 30, 29 * self.env_height / 30)
 
         # 添加随机速度（公式3）
-        speed_x = np.random.uniform(- self.microdrill_speed / 4, self.microdrill_speed / 4)
-        speed_y = np.random.uniform(- self.microdrill_speed / 4, self.microdrill_speed / 4)
+        speed_x = np.random.uniform(- self.catheter_tip_speed / 4, self.catheter_tip_speed / 4)
+        speed_y = np.random.uniform(- self.catheter_tip_speed / 4, self.catheter_tip_speed / 4)
         radius = np.random.uniform(2, 7)
 
         return {
@@ -118,14 +118,14 @@ class TestMicroDrillEnv(gym.Env):
         self._generate_obstacles()
 
         # 固定初始条件: 尖端位置和目标位置
-        self.drill_pos = np.array([50.0, 250.0])  # 初始位置
+        self.catheter_tip_pos = np.array([50.0, 250.0])  # 初始位置
         self.goal_pos = np.array([150.0, 50.0])  # 目标位置
 
         # 初始化微型尖端的方向
-        microdrill_dx = self.goal_pos[0] - self.drill_pos[0]
-        microdrill_dy = self.goal_pos[1] - self.drill_pos[1]
-        microdrill_initial_theta = np.arctan2(microdrill_dy, microdrill_dx)  # 初始方向指向目标
-        self.drill_theta = microdrill_initial_theta + + np.random.uniform(-np.pi / 24, np.pi / 24)
+        catheter_tip_dx = self.goal_pos[0] - self.catheter_tip_pos[0]
+        catheter_tip_dy = self.goal_pos[1] - self.catheter_tip_pos[1]
+        catheter_tip_initial_theta = np.arctan2(catheter_tip_dy, catheter_tip_dx)  # 初始方向指向目标
+        self.catheter_tip_theta = catheter_tip_initial_theta + + np.random.uniform(-np.pi / 24, np.pi / 24)
 
         self.current_step = 0
 
@@ -135,10 +135,10 @@ class TestMicroDrillEnv(gym.Env):
     def _get_boundary_distance(self):
         """计算到最近边界的距离（ III-A2节do参数）"""
         distances = [
-            self.drill_pos[0],  # 左边界
-            self.env_width - self.drill_pos[0],  # 右边界
-            self.drill_pos[1],  # 下边界
-            self.env_height - self.drill_pos[1]  # 上边界
+            self.catheter_tip_pos[0],  # 左边界
+            self.env_width - self.catheter_tip_pos[0],  # 右边界
+            self.catheter_tip_pos[1],  # 下边界
+            self.env_height - self.catheter_tip_pos[1]  # 上边界
         ]
         return np.min(distances)
 
@@ -146,14 +146,14 @@ class TestMicroDrillEnv(gym.Env):
     def _get_obs(self):
         """根据公式(4)构造观察向量"""
         # 添加传感器噪声（ III-B节）
-        noisy_pos = self.drill_pos + np.random.normal(0, self.obs_noise['position'], 2)
-        noisy_theta = self.drill_theta + np.random.normal(0, self.obs_noise['orientation'])
+        noisy_pos = self.catheter_tip_pos + np.random.normal(0, self.obs_noise['position'], 2)
+        noisy_theta = self.catheter_tip_theta + np.random.normal(0, self.obs_noise['orientation'])
 
         base_obs1 = [
-            self.drill_pos[0],  # px
-            self.drill_pos[1],  # py
-            self.drill_theta,  # θ
-            self.drill_radius,  # r
+            self.catheter_tip_pos[0],  # px
+            self.catheter_tip_pos[1],  # py
+            self.catheter_tip_theta,  # θ
+            self.catheter_tip_radius,  # r
             self.goal_pos[0],  # gx
             self.goal_pos[1],  # gy
         ]
@@ -182,21 +182,21 @@ class TestMicroDrillEnv(gym.Env):
         """环境步进"""
         # 根据 III-A3节更新方向
         delta_theta = action[0] * np.pi / 5  # 限制在±π/6范围内, 这个其实不是很需要???
-        self.drill_theta = (self.drill_theta + delta_theta) % (2 * np.pi)
+        self.catheter_tip_theta = (self.catheter_tip_theta + delta_theta) % (2 * np.pi)
 
-        actual_theta = self.drill_theta
+        actual_theta = self.catheter_tip_theta
 
         # 添加动作噪声（ III-B节）
         actual_theta += np.random.normal(0, 0.01 * abs(delta_theta)+1e-6)
         print("current_step: ", self.current_step, "actual_theta: ", actual_theta)
 
         # 更新微型尖端位置
-        velocity = self.microdrill_speed * np.array([
+        velocity = self.catheter_tip_speed * np.array([
             np.cos(actual_theta),
             np.sin(actual_theta)
         ])
 
-        self.drill_pos += velocity * self.dt
+        self.catheter_tip_pos += velocity * self.dt
 
         # 更新存在的障碍物位置（动态调整速度和替换越界障碍物）
         new_obstacles = []
@@ -205,9 +205,9 @@ class TestMicroDrillEnv(gym.Env):
             index_obs += 1
             if index_obs <= self.num_obstacles:
                 # === 动态生成速度（公式3） ===
-                speed_x = np.random.uniform( -self.microdrill_speed / 3,  self.microdrill_speed / 3)
+                speed_x = np.random.uniform( -self.catheter_tip_speed / 3,  self.catheter_tip_speed / 3)
                 #speed_x = np.random.uniform(2, 10)
-                speed_y = np.random.uniform( -self.microdrill_speed / 3,  self.microdrill_speed / 3)
+                speed_y = np.random.uniform( -self.catheter_tip_speed / 3,  self.catheter_tip_speed / 3)
                 #speed_y = np.random.uniform(2, 10)
                 obst['velocity'] = np.array([speed_x, speed_y])
 
@@ -251,7 +251,7 @@ class TestMicroDrillEnv(gym.Env):
     def _check_collision(self):
         """碰撞检测"""
         # 检查边界碰撞
-        if (self.drill_pos[0] < 0 or self.drill_pos[0] > self.env_width or self.drill_pos[1] < 0 or self.drill_pos[1] > self.env_height):
+        if (self.catheter_tip_pos[0] < 0 or self.catheter_tip_pos[0] > self.env_width or self.catheter_tip_pos[1] < 0 or self.catheter_tip_pos[1] > self.env_height):
             return True
 
         # 检查障碍物碰撞
@@ -259,8 +259,8 @@ class TestMicroDrillEnv(gym.Env):
         for obst in self.obstacles:
             index_obs += 1
             if index_obs <= self.num_obstacles:
-                distance = np.linalg.norm(self.drill_pos - obst['position'])
-                if distance <= (self.drill_radius + obst['radius']):
+                distance = np.linalg.norm(self.catheter_tip_pos - obst['position'])
+                if distance <= (self.catheter_tip_radius + obst['radius']):
                     return True
             else:
                 break
@@ -270,7 +270,7 @@ class TestMicroDrillEnv(gym.Env):
     def _calculate_reward(self, velocity):
         """实现 III-A4节的奖励函数"""
         # 导航奖励（公式7）
-        distance_to_goal = np.linalg.norm(self.drill_pos - self.goal_pos)
+        distance_to_goal = np.linalg.norm(self.catheter_tip_pos - self.goal_pos)
         scale = 25
         bn = 10 / ((abs(distance_to_goal)) / scale)  # ca=0.1
 
@@ -281,7 +281,7 @@ class TestMicroDrillEnv(gym.Env):
         for obst in self.obstacles:
             index_obs += 1
             if index_obs <= self.num_obstacles:
-                dist = np.linalg.norm(self.drill_pos - obst['position']) - (obst['radius'] + self.drill_radius)
+                dist = np.linalg.norm(self.catheter_tip_pos - obst['position']) - (obst['radius'] + self.catheter_tip_radius)
                 # ??? 需不需要只考虑局部的呢?????
                 if dist < d_safe:
                     po -= 5 * (1 / (abs(dist)) )
@@ -298,11 +298,11 @@ class TestMicroDrillEnv(gym.Env):
             index_obs += 1
             if index_obs <= self.num_obstacles:
                 relative_vel = velocity - obst['velocity']
-                obstacle_to_drill = self.drill_pos - obst['position']
-                unit_vector = obstacle_to_drill / (np.linalg.norm(obstacle_to_drill) + 1e-8)
+                obstacle_to_catheter_tip = self.catheter_tip_pos - obst['position']
+                unit_vector = obstacle_to_catheter_tip / (np.linalg.norm(obstacle_to_catheter_tip) + 1e-8)
                 dot_product = np.dot(relative_vel, unit_vector)
                 if dot_product < 0:
-                    dist = np.linalg.norm(self.drill_pos - obst['position']) - (obst['radius'] + self.drill_radius)
+                    dist = np.linalg.norm(self.catheter_tip_pos - obst['position']) - (obst['radius'] + self.catheter_tip_radius)
                     # ??? 只考虑局部障碍物的影响
                     if dist < d_safe:
                         pv += 0.009 * dot_product
@@ -320,7 +320,7 @@ class TestMicroDrillEnv(gym.Env):
             self.fig, self.ax = plt.subplots(figsize=(10, 15))
             self.ax.set_xlim(0, self.env_width)
             self.ax.set_ylim(0, self.env_height)
-            self.ax.set_title("MicroDrill Navigation Simulation")
+            self.ax.set_title("Catheter Tip Navigation Simulation")
 
         # 清除上一帧内容
         self.ax.clear()
@@ -328,21 +328,21 @@ class TestMicroDrillEnv(gym.Env):
         self.ax.set_ylim(0, self.env_height)
 
         # 绘制微型尖端
-        drill_circle = plt.Circle(
-            self.drill_pos,
-            self.drill_radius,
+        catheter_tip_circle = plt.Circle(
+            self.catheter_tip_pos,
+            self.catheter_tip_radius,
             color='blue',
             alpha=0.8,
-            label='Drill'
+            label='Catheter Tip'
         )
-        self.ax.add_patch(drill_circle)
+        self.ax.add_patch(catheter_tip_circle)
 
         # 绘制方向箭头
         arrow_length = 5
-        dx = arrow_length * np.cos(self.drill_theta)
-        dy = arrow_length * np.sin(self.drill_theta)
+        dx = arrow_length * np.cos(self.catheter_tip_theta)
+        dy = arrow_length * np.sin(self.catheter_tip_theta)
         self.ax.arrow(
-            self.drill_pos[0], self.drill_pos[1],
+            self.catheter_tip_pos[0], self.catheter_tip_pos[1],
             dx, dy,
             head_width=3, head_length=3,
             fc='red', ec='red'
@@ -391,9 +391,9 @@ class TestMicroDrillEnv(gym.Env):
         plt.pause(0.15)  # 至少50ms
 
 
-def run_simulation(model_path="ppo_microdrill_raw.zip"):
+def run_simulation(model_path="ppo_catheter_tip_raw.zip"):
     # 创建测试环境
-    test_env = TestMicroDrillEnv(
+    test_env = TestCatheterEnv(
         render_mode="human"
     )
 
@@ -420,7 +420,7 @@ def run_simulation(model_path="ppo_microdrill_raw.zip"):
             if terminated:
                 print("Episode terminated due to collision!")
             else:
-                distance = np.linalg.norm(test_env.drill_pos - test_env.goal_pos)
+                distance = np.linalg.norm(test_env.catheter_tip_pos - test_env.goal_pos)
                 if distance <= test_env.goal_radius:
                     print("Reached goal successfully!")
                 else:
