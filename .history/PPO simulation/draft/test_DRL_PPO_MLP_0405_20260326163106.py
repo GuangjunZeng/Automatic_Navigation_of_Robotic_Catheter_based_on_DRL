@@ -3,7 +3,7 @@ import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
 import matplotlib.pyplot as plt
-from stable_baselines3 import PPO
+from stable_baselines3 import PPO,SAC
 from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.callbacks import EvalCallback
 import matplotlib  # 先导入 matplotlib 模块
@@ -29,23 +29,23 @@ class TestMicroDrillEnv(gym.Env):
         # 初始化关键属性
         self.drill_theta = 0.0  # 初始方向
         self.drill_radius = 5  # 尖端半径
-        self.dt = 0.7  # 时间步长（秒）
+        self.dt = 1  # 时间步长（秒）
 
         # 根据 III-A1节初始化参数
-        self.env_width = 200  # 环境宽度（米）
-        self.env_height = 300  # 环境高度
-        self.num_obstacles = 8  # 初始障碍物数量
-        self.max_steps = 3000  # 最大时间步
+        self.env_width = 110  # 环境宽度（米）
+        self.env_height = 150  # 环境高度
+        self.num_obstacles = 3  # 初始障碍物数量
+        self.max_steps = 800  # 最大时间步
 
         # 根据 表II设置随机化范围
         self.param_ranges = {
             'microdrill_speed': (9, 15),
-            'num_obstacles': (6, 18),
-            'goal_radius': (3, 7)
+            'num_obstacles': (3, 4),
+            'goal_radius': (3, 8)
         }
 
         # 固定参数
-        self.max_obstacles = 18  # 根据表II的最大障碍物数量
+        self.max_obstacles = 4  # 根据表II的最大障碍物数量
         self.base_obs_dim = 8  # px,py,θ,r,gx,gy,do,t
         self.obstacle_obs_dim = 3 * self.max_obstacles  # 每个障碍物3个参数
         self.total_obs_dim = self.base_obs_dim + self.obstacle_obs_dim  # 总维度=8+54=62
@@ -75,9 +75,10 @@ class TestMicroDrillEnv(gym.Env):
         # 根据 添加传感器噪声参数（表I）
         self.obs_noise = {
             'position': 1e-3,  # 位置噪声
-            'orientation': 0.001,  # 方向噪声（弧度）
-            'obstacle_pos': 1e-5  # 障碍物位置噪声
+            'orientation': 0.03,  # 方向噪声（弧度）
+            'obstacle_pos': 15e-5  # 障碍物位置噪声
         }
+
 
     def _generate_single_obstacle(self):
         """ 根据 公式(2)生成单个障碍物 """
@@ -118,8 +119,8 @@ class TestMicroDrillEnv(gym.Env):
         self._generate_obstacles()
 
         # 固定初始条件: 尖端位置和目标位置
-        self.drill_pos = np.array([50.0, 250.0])  # 初始位置
-        self.goal_pos = np.array([150.0, 50.0])  # 目标位置
+        self.drill_pos = np.array([25.0, 95.0])  # 初始位置
+        self.goal_pos = np.array([100.0, 35.0])  # 目标位置
 
         # 初始化微型尖端的方向
         microdrill_dx = self.goal_pos[0] - self.drill_pos[0]
@@ -391,14 +392,14 @@ class TestMicroDrillEnv(gym.Env):
         plt.pause(0.15)  # 至少50ms
 
 
-def run_simulation(model_path="ppo_microdrill_raw.zip"):
+def run_simulation(model_path="sac_microdrill_raw.zip"):
     # 创建测试环境
     test_env = TestMicroDrillEnv(
         render_mode="human"
     )
 
     # 加载训练好的模型
-    model = PPO.load(model_path)
+    model = SAC.load(model_path)
 
     # 运行测试循环
     obs, _ = test_env.reset() #进行环境的设置/重置

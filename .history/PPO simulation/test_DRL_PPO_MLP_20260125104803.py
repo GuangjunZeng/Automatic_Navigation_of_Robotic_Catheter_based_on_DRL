@@ -28,7 +28,7 @@ class TestMicroDrillEnv(gym.Env):
 
         # 初始化关键属性
         self.drill_theta = 0.0  # 初始方向
-        self.drill_radius = 5  # 尖端半径
+        self.drill_radius = 5  # 钻头半径
         self.dt = 0.7  # 时间步长（秒）
 
         # 根据 III-A1节初始化参数
@@ -117,11 +117,11 @@ class TestMicroDrillEnv(gym.Env):
         # 生成随机测试环境中的障碍物参数
         self._generate_obstacles()
 
-        # 固定初始条件: 尖端位置和目标位置
+        # 固定初始条件: 钻头位置和目标位置
         self.drill_pos = np.array([50.0, 250.0])  # 初始位置
         self.goal_pos = np.array([150.0, 50.0])  # 目标位置
 
-        # 初始化微型尖端的方向
+        # 初始化微型钻头的方向
         microdrill_dx = self.goal_pos[0] - self.drill_pos[0]
         microdrill_dy = self.goal_pos[1] - self.drill_pos[1]
         microdrill_initial_theta = np.arctan2(microdrill_dy, microdrill_dx)  # 初始方向指向目标
@@ -190,7 +190,7 @@ class TestMicroDrillEnv(gym.Env):
         actual_theta += np.random.normal(0, 0.01 * abs(delta_theta)+1e-6)
         print("current_step: ", self.current_step, "actual_theta: ", actual_theta)
 
-        # 更新微型尖端位置
+        # 更新微型钻头位置
         velocity = self.microdrill_speed * np.array([
             np.cos(actual_theta),
             np.sin(actual_theta)
@@ -327,7 +327,7 @@ class TestMicroDrillEnv(gym.Env):
         self.ax.set_xlim(0, self.env_width)
         self.ax.set_ylim(0, self.env_height)
 
-        # 绘制微型尖端
+        # 绘制微型钻头
         drill_circle = plt.Circle(
             self.drill_pos,
             self.drill_radius,

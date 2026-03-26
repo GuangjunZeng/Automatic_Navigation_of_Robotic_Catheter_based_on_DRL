@@ -1,45 +1,36 @@
-# test_microdrill.py
+# 环境配置部分（强制使用Gymnasium接口）
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
-import matplotlib.pyplot as plt
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.callbacks import EvalCallback
-import matplotlib  # 先导入 matplotlib 模块
-matplotlib.use('TkAgg')  # 然后指定后端
-import matplotlib.pyplot as plt  # 如果需要使用 pyplot，接着导入
-import torch
-import torch.nn as nn
 
-# 你的其他代码...
-
-class TestMicroDrillEnv(gym.Env):
-    """测试专用环境（添加可视化功能）"""
-
+class MicroDrillEnv(gym.Env):
+    """
+    自定义微型尖端导航环境
+    实现 III-A节描述的环境配置
+    """
     metadata = {"render_modes": ["human"], "render_fps": 30}
 
-    def __init__(self, render_mode=None):
+    def __init__(self, env_id=0, render_mode=None):
         super().__init__()
-
-        # 预初始化可视化相关属性
-        self.fig = None
-        self.ax = None
 
         # 初始化关键属性
         self.drill_theta = 0.0  # 初始方向
         self.drill_radius = 5  # 尖端半径
-        self.dt = 0.7  # 时间步长（秒）
+        self.dt = 0.5  # 时间步长（秒）
+        self.env_id = env_id  # 添加环境ID
 
         # 根据 III-A1节初始化参数
         self.env_width = 200  # 环境宽度（米）
         self.env_height = 300  # 环境高度
         self.num_obstacles = 8  # 初始障碍物数量
-        self.max_steps = 3000  # 最大时间步
+        self.max_steps = 800  # 最大时间步
 
         # 根据 表II设置随机化范围
         self.param_ranges = {
-            'microdrill_speed': (9, 15),
+            'microdrill_speed': (4, 8),
             'num_obstacles': (6, 18),
             'goal_radius': (3, 7)
         }
@@ -57,10 +48,11 @@ class TestMicroDrillEnv(gym.Env):
 
         # 根据 III-A3节定义动作空间
         self.action_space = spaces.Box(
-            low= -1, high= 1, shape=(1,), dtype=np.float32)
+            low= 0, high= 2.0, shape=(1,), dtype=np.float32)
 
         # 初始化物理参数: microdrill_speed, num_obstacles, goal_radius
         self._randomize_parameters()
+        #???这个重复多余了吧？   这个不是固定的，放在init中不合适。但多着也没影响
 
     def _randomize_parameters(self):
         """实现 III-B节的域随机化"""
@@ -70,13 +62,13 @@ class TestMicroDrillEnv(gym.Env):
         self.goal_radius = np.random.uniform(*self.param_ranges['goal_radius'])
 
         # 动态调整观察空间形状
-        # self.observation_space.shape = (4 + 3 * self.num_obstacles + 2,)
+        #self.observation_space.shape = (4 + 3 * self.num_obstacles + 2,)
 
         # 根据 添加传感器噪声参数（表I）
         self.obs_noise = {
             'position': 1e-3,  # 位置噪声
-            'orientation': 0.001,  # 方向噪声（弧度）
-            'obstacle_pos': 1e-5  # 障碍物位置噪声
+            'orientation': 0.03,  # 方向噪声（弧度）
+            'obstacle_pos': 15e-5  # 障碍物位置噪声
         }
 
     def _generate_single_obstacle(self):
@@ -90,8 +82,8 @@ class TestMicroDrillEnv(gym.Env):
             y = np.random.uniform(20 * self.env_height / 30, 29 * self.env_height / 30)
 
         # 添加随机速度（公式3）
-        speed_x = np.random.uniform(- self.microdrill_speed / 4, self.microdrill_speed / 4)
-        speed_y = np.random.uniform(- self.microdrill_speed / 4, self.microdrill_speed / 4)
+        speed_x = np.random.uniform(-self.microdrill_speed / 4, self.microdrill_speed / 4)
+        speed_y = np.random.uniform(-self.microdrill_speed / 4, self.microdrill_speed / 4)
         radius = np.random.uniform(2, 7)
 
         return {
@@ -100,7 +92,6 @@ class TestMicroDrillEnv(gym.Env):
             'radius': radius
         }
 
-
     def _generate_obstacles(self):
         self.obstacles = [
             self._generate_single_obstacle()
@@ -108,28 +99,31 @@ class TestMicroDrillEnv(gym.Env):
         ]
 
     def reset(self, seed=None, options=None):
-        # 必须调用父类reset()以确保兼容性
+        """重置环境"""
         super().reset(seed=seed)
 
-        # 固定障碍物数量
-        self.num_obstacles = 9
+        # 随机生成障碍物
+        self.num_obstacles = np.random.randint(6, 18)
         self._randomize_parameters()
-        # 生成随机测试环境中的障碍物参数
         self._generate_obstacles()
 
-        # 固定初始条件: 尖端位置和目标位置
-        self.drill_pos = np.array([50.0, 250.0])  # 初始位置
-        self.goal_pos = np.array([150.0, 50.0])  # 目标位置
+        # 随机初始化尖端位置
+        self.drill_pos = np.array([
+            np.random.uniform(0, self.env_width/10),
+            np.random.uniform(9*self.env_height/10, self.env_height)
+        ])
 
-        # 初始化微型尖端的方向
-        microdrill_dx = self.goal_pos[0] - self.drill_pos[0]
-        microdrill_dy = self.goal_pos[1] - self.drill_pos[1]
-        microdrill_initial_theta = np.arctan2(microdrill_dy, microdrill_dx)  # 初始方向指向目标
-        self.drill_theta = microdrill_initial_theta + + np.random.uniform(-np.pi / 24, np.pi / 24)
+        #随机初始化goal目标位置
+        self.goal_pos = np.array([
+            np.random.uniform(9*self.env_width/10, self.env_width),
+            np.random.uniform(0, self.env_height/10)
+        ])
+
+        # 初始化方向
+        self.drill_theta = np.random.uniform(0, 2 * np.pi)
 
         self.current_step = 0
-
-        return self._get_obs(), {}  # 必须返回两个值！
+        return self._get_obs(), {}  # 必须返回两个值
 
 
     def _get_boundary_distance(self):
@@ -142,26 +136,24 @@ class TestMicroDrillEnv(gym.Env):
         ]
         return np.min(distances)
 
-
     def _get_obs(self):
         """根据公式(4)构造观察向量"""
         # 添加传感器噪声（ III-B节）
         noisy_pos = self.drill_pos + np.random.normal(0, self.obs_noise['position'], 2)
         noisy_theta = self.drill_theta + np.random.normal(0, self.obs_noise['orientation'])
 
-        base_obs1 = [
+        # 基础观测部分（8维）
+        base_obs = [
             self.drill_pos[0],  # px
             self.drill_pos[1],  # py
             self.drill_theta,  # θ
             self.drill_radius,  # r
             self.goal_pos[0],  # gx
             self.goal_pos[1],  # gy
+            self._get_boundary_distance(),  # d0
+            self.current_step  #???!!! t未归一化 (归一化)
         ]
 
-        base_obs2 = [
-            self._get_boundary_distance(),  # d0
-            self.current_step  # ???!!! t未归一化 (归一化)
-        ]
         # 障碍物部分（54维=3×18）
         obst_obs = []
         for i in range(self.max_obstacles):
@@ -175,27 +167,29 @@ class TestMicroDrillEnv(gym.Env):
             else:
                 # 无效障碍物填充-1
                 obst_obs += [-100.0, -100.0, -100.0]
-        obs = base_obs1 + obst_obs + base_obs2
+        obs = base_obs + obst_obs
         return np.array(obs, dtype=np.float32)
 
     def step(self, action):
         """环境步进"""
         # 根据 III-A3节更新方向
-        delta_theta = action[0] * np.pi / 5  # 限制在±π/6范围内, 这个其实不是很需要???
+        delta_theta = action[0] #??? * np.pi / 6  # 限制在±π/6范围内, 这个其实不是很需要???
         self.drill_theta = (self.drill_theta + delta_theta) % (2 * np.pi)
 
-        actual_theta = self.drill_theta
+        # 计算运动（考虑边界漂移）
+        drift_angle = np.deg2rad(16)  #  III-B节提到的16度漂移
+        actual_theta = self.drill_theta + drift_angle
+
+
 
         # 添加动作噪声（ III-B节）
-        actual_theta += np.random.normal(0, 0.01 * abs(delta_theta)+1e-6)
-        print("current_step: ", self.current_step, "actual_theta: ", actual_theta)
+        actual_theta += np.random.normal(0, 0.02 * abs(delta_theta)+1e-6)
 
         # 更新微型尖端位置
         velocity = self.microdrill_speed * np.array([
             np.cos(actual_theta),
             np.sin(actual_theta)
         ])
-
         self.drill_pos += velocity * self.dt
 
         # 更新存在的障碍物位置（动态调整速度和替换越界障碍物）
@@ -205,10 +199,14 @@ class TestMicroDrillEnv(gym.Env):
             index_obs += 1
             if index_obs <= self.num_obstacles:
                 # === 动态生成速度（公式3） ===
-                speed_x = np.random.uniform( -self.microdrill_speed / 3,  self.microdrill_speed / 3)
-                #speed_x = np.random.uniform(2, 10)
-                speed_y = np.random.uniform( -self.microdrill_speed / 3,  self.microdrill_speed / 3)
-                #speed_y = np.random.uniform(2, 10)
+                speed_x = np.random.uniform(
+                    -self.microdrill_speed / 3,
+                    self.microdrill_speed / 3
+                )
+                speed_y = np.random.uniform(
+                    -self.microdrill_speed / 3,
+                    self.microdrill_speed / 3
+                )
                 obst['velocity'] = np.array([speed_x, speed_y])
 
                 # 更新位置
@@ -239,6 +237,8 @@ class TestMicroDrillEnv(gym.Env):
         reward = self._calculate_reward(velocity)
 
         self.current_step += 1
+        print(f"Env {self.env_id} - current_step: {self.current_step}", "actual_theta: ", actual_theta)
+        #print("current step: ", self.current_step, ";", "actual_theta: ", actual_theta)
 
         return (
             self._get_obs(),
@@ -251,7 +251,8 @@ class TestMicroDrillEnv(gym.Env):
     def _check_collision(self):
         """碰撞检测"""
         # 检查边界碰撞
-        if (self.drill_pos[0] < 0 or self.drill_pos[0] > self.env_width or self.drill_pos[1] < 0 or self.drill_pos[1] > self.env_height):
+        if (self.drill_pos[0] < 0 or self.drill_pos[0] > self.env_width or
+                self.drill_pos[1] < 0 or self.drill_pos[1] > self.env_height):
             return True
 
         # 检查障碍物碰撞
@@ -271,25 +272,24 @@ class TestMicroDrillEnv(gym.Env):
         """实现 III-A4节的奖励函数"""
         # 导航奖励（公式7）
         distance_to_goal = np.linalg.norm(self.drill_pos - self.goal_pos)
-        scale = 25
-        bn = 10 / ((abs(distance_to_goal)) / scale)  # ca=0.1
+        bn = 0.1 / (distance_to_goal ** 2 + 1e-6)  # ca=0.1
 
         # 障碍物惩罚（公式8）
         po = 0
         index_obs = 0
-        d_safe = 45
         for obst in self.obstacles:
             index_obs += 1
             if index_obs <= self.num_obstacles:
-                dist = np.linalg.norm(self.drill_pos - obst['position']) - (obst['radius'] + self.drill_radius)
-                # ??? 需不需要只考虑局部的呢?????
-                if dist < d_safe:
-                    po -= 5 * (1 / (abs(dist)) )
+                dist = np.linalg.norm(self.drill_pos - obst['position']) - obst['radius']
+                d_safe = 4
+                #??? 需不需要只考虑局部的呢?????
+                #if dist < d_safe :  # d_safe=50um
+                po -= 1.5 * ( 1/(abs(dist))  -  1/(d_safe) )
             else:
                 break
 
         # 时间惩罚（公式9）
-        pt = -0.01  # kt=0.01
+        pt = -0.2  #??? 我认为这个计算是有问题的?????
 
         # 速度势能（公式10）
         pv = 0
@@ -299,137 +299,73 @@ class TestMicroDrillEnv(gym.Env):
             if index_obs <= self.num_obstacles:
                 relative_vel = velocity - obst['velocity']
                 obstacle_to_drill = self.drill_pos - obst['position']
-                unit_vector = obstacle_to_drill / (np.linalg.norm(obstacle_to_drill) + 1e-8)
+                unit_vector = obstacle_to_drill / (np.linalg.norm(obstacle_to_drill) + 1e-6)
                 dot_product = np.dot(relative_vel, unit_vector)
                 if dot_product < 0:
-                    dist = np.linalg.norm(self.drill_pos - obst['position']) - (obst['radius'] + self.drill_radius)
-                    # ??? 只考虑局部障碍物的影响
-                    if dist < d_safe:
-                        pv += 0.009 * dot_product
+                    pv += -0.05 * dot_product  # kv=0.05
             else:
                 break
 
         return bn + po + pt + pv
 
 
+# 训练部分（对应 III-C节）
+def train():
+    # 创建并行环境
+    #env = DummyVecEnv([lambda: MicroDrillEnv(env_id=i) for i in range(8)])
+    env = MicroDrillEnv()
+    env = DummyVecEnv([lambda: env])  # 单环境
 
-    def render(self):
-        """实现可视化渲染"""
-        if self.fig is None:
-            plt.ion()
-            self.fig, self.ax = plt.subplots(figsize=(10, 15))
-            self.ax.set_xlim(0, self.env_width)
-            self.ax.set_ylim(0, self.env_height)
-            self.ax.set_title("MicroDrill Navigation Simulation")
+    # 强制使用新版接口
+    from stable_baselines3.common.env_checker import check_env
+    #check_env(env.envs[0])  # 验证单个环境
 
-        # 清除上一帧内容
-        self.ax.clear()
-        self.ax.set_xlim(0, self.env_width)
-        self.ax.set_ylim(0, self.env_height)
-
-        # 绘制微型尖端
-        drill_circle = plt.Circle(
-            self.drill_pos,
-            self.drill_radius,
-            color='blue',
-            alpha=0.8,
-            label='Drill'
-        )
-        self.ax.add_patch(drill_circle)
-
-        # 绘制方向箭头
-        arrow_length = 5
-        dx = arrow_length * np.cos(self.drill_theta)
-        dy = arrow_length * np.sin(self.drill_theta)
-        self.ax.arrow(
-            self.drill_pos[0], self.drill_pos[1],
-            dx, dy,
-            head_width=3, head_length=3,
-            fc='red', ec='red'
-        )
-
-        # 绘制目标区域
-        goal_circle = plt.Circle(
-            self.goal_pos,
-            self.goal_radius,
-            color='green',
-            alpha=0.3,
-            label='Goal'
-        )
-
-        self.ax.add_patch(goal_circle)
-
-        # 绘制障碍物
-        for obst in self.obstacles:
-            obst_circle = plt.Circle(
-                obst['position'],
-                obst['radius'],
-                color='orange',
-                alpha=0.5,
-                label='Obstacle'
-            )
-            self.ax.add_patch(obst_circle)
-            # 绘制速度向量
-            self.ax.arrow(
-                obst['position'][0], obst['position'][1],
-                obst['velocity'][0] * 5, obst['velocity'][1] * 5,  # 放大速度显示
-                head_width=3, head_length=5,
-                fc='black', ec='black'
-            )
-
-        # 添加图例和标注
-        self.ax.legend(loc='upper right')
-        self.ax.text(5, 290, f"Step: {self.current_step}/{self.max_steps}",
-                     fontsize=10, bbox=dict(facecolor='white', alpha=0.8))
-
-        print('current step: ', self.current_step)
-
-        #plt.draw()
-        # 强制刷新
-        self.fig.canvas.draw_idle()
-        self.fig.canvas.flush_events()
-        plt.pause(0.15)  # 至少50ms
-
-
-def run_simulation(model_path="ppo_microdrill_raw.zip"):
-    # 创建测试环境
-    test_env = TestMicroDrillEnv(
-        render_mode="human"
+    # 定义策略网络和价值网络的结构
+    policy_kwargs = dict(
+        net_arch=dict(pi=[256, 256], vf=[128, 128])  # 分离策略网络和价值网络
     )
 
-    # 加载训练好的模型
-    model = PPO.load(model_path)
+    # 定义PPO模型（使用MlpPolicy）
+    model = PPO(
+        "MlpPolicy",
+        env,
+        policy_kwargs=policy_kwargs,  # 将网络结构通过policy_kwargs传递
+        verbose=1,
+        learning_rate=3e-4,
+        n_steps=2048,
+        batch_size=128,
+        n_epochs=15, #每个数据批次的训练次数。
+        gamma=0.9, #越大越重视长期奖励
+        gae_lambda=0.95,
+        clip_range=0.13, #PPO 的裁剪范围（Clipping Parameter）。
+        target_kl=0.032, #控制策略更新幅度
+        device='cuda'
+    )
 
-    # 运行测试循环
-    obs, _ = test_env.reset() #进行环境的设置/重置
-    done = False
-    total_reward = 0
-    index_circle = 0
-    while not done:
-        action, _ = model.predict(obs, deterministic=True)
-        obs, reward, terminated, truncated, info = test_env.step(action)
-        done = terminated or truncated
-        total_reward += reward
+    # 设置评估回调
+    eval_callback = EvalCallback(
+        env,
+        best_model_save_path='./logs/',
+        log_path='./logs/',
+        eval_freq=10000,
+        deterministic=True,
+        render=False
+    )
 
-        index_circle += 1
-        print('current index_circle: ', index_circle)
+    # 开始训练（1M steps）
+    model.learn(
+        total_timesteps=3_000_000,
+        callback=eval_callback,
+        progress_bar=True
+    )
 
-        test_env.render()  # 渲染当前状态
-
-        if done:
-            if terminated:
-                print("Episode terminated due to collision!")
-            else:
-                distance = np.linalg.norm(test_env.drill_pos - test_env.goal_pos)
-                if distance <= test_env.goal_radius:
-                    print("Reached goal successfully!")
-                else:
-                    print("Time out without reaching goal.")
-            print(f"Total reward: {total_reward:.2f}")
-            plt.ioff()
-            plt.show()
-        print('finish the current index_circle: ', index_circle)
+    # 保存模型
+    model.save("ppo_microdrill_raw")  # 生成 ppo_microdrill_raw.zip
+    #env.save("vec_normalize.pkl")
 
 
 if __name__ == "__main__":
-    run_simulation()
+    # 训练模型
+    train()
+    print("finish training !!!")
+
