@@ -329,7 +329,7 @@ import torch.nn as nn
 
 
 
-# 训练部分
+# 训练部分（对应 III-C节）
 def train():
     # 创建并行环境
     #env = DummyVecEnv([lambda: CatheterEnv() for _ in range(8)])

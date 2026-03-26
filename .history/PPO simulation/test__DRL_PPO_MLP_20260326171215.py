@@ -1,28 +1,35 @@
-# 环境配置部分（强制使用Gymnasium接口）
+# test_catheter.py
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
+import matplotlib.pyplot as plt
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.callbacks import EvalCallback
-import math
+import matplotlib  # 先导入 matplotlib 模块
+matplotlib.use('TkAgg')  # 然后指定后端
+import matplotlib.pyplot as plt  # 如果需要使用 pyplot，接着导入
 import torch
 import torch.nn as nn
 
-class CatheterEnv(gym.Env):
-    """
-    自定义导管尖端导航环境
-    """
+# 你的其他代码...
+
+class TestCatheterEnv(gym.Env):
+    """测试专用环境（添加可视化功能）"""
+
     metadata = {"render_modes": ["human"], "render_fps": 30}
 
-    def __init__(self, env_id=0, render_mode=None):
+    def __init__(self, render_mode=None):
         super().__init__()
+
+        # 预初始化可视化相关属性
+        self.fig = None
+        self.ax = None
 
         # 初始化关键属性
         self.catheter_tip_theta = 0.0  # 初始方向
         self.catheter_tip_radius = 5  # 导管尖端半径
         self.dt = 0.7  # 时间步长（秒）
-        self.env_id = env_id  # 添加环境ID
 
         # 根据 III-A1节初始化参数
         self.env_width = 200  # 环境宽度（米）
@@ -30,7 +37,7 @@ class CatheterEnv(gym.Env):
         self.num_obstacles = 8  # 初始障碍物数量
         self.max_steps = 3000  # 最大时间步
 
-
+        # 根据 表II设置随机化范围
         self.param_ranges = {
             'catheter_tip_speed': (9, 15),
             'num_obstacles': (6, 18),
@@ -38,11 +45,11 @@ class CatheterEnv(gym.Env):
         }
 
         # 固定参数
-        self.max_obstacles = 12  # 根据表II的最大障碍物数量
+        self.max_obstacles = 18  # 根据表II的最大障碍物数量
         self.base_obs_dim = 8  # px,py,θ,r,gx,gy,do,t
         self.obstacle_obs_dim = 3 * self.max_obstacles  # 每个障碍物3个参数
         self.total_obs_dim = self.base_obs_dim + self.obstacle_obs_dim  # 总维度=8+54=62
-        # 
+        # 根据 III-A2节定义观察空间
         self.observation_space = spaces.Box(
             low=-np.inf, high=np.inf,
             shape=(self.total_obs_dim,),
@@ -54,7 +61,6 @@ class CatheterEnv(gym.Env):
 
         # 初始化物理参数: catheter_tip_speed, num_obstacles, goal_radius
         self._randomize_parameters()
-        #???这个重复多余了吧？   这个不是固定的，放在init中不合适。但多着也没影响
 
     def _randomize_parameters(self):
         """实现 III-B节的域随机化"""
@@ -64,17 +70,16 @@ class CatheterEnv(gym.Env):
         self.goal_radius = np.random.uniform(*self.param_ranges['goal_radius'])
 
         # 动态调整观察空间形状
-        #self.observation_space.shape = (4 + 3 * self.num_obstacles + 2,)
+        # self.observation_space.shape = (4 + 3 * self.num_obstacles + 2,)
 
         # 根据 添加传感器噪声参数（表I）
         self.obs_noise = {
             'position': 1e-3,  # 位置噪声
-            'orientation': 0.03,  # 方向噪声（弧度）
-            'obstacle_pos': 15e-5  # 障碍物位置噪声
+            'orientation': 0.001,  # 方向噪声（弧度）
+            'obstacle_pos': 1e-5  # 障碍物位置噪声
         }
 
     def _generate_single_obstacle(self):
-        """ 根据 公式(2)生成单个障碍物 """
         r = np.random.choice([-1, 1])
         if r == -1:  # 底部生成
             x = np.random.uniform(self.env_width / 20, 19 * self.env_width / 20)
@@ -83,9 +88,9 @@ class CatheterEnv(gym.Env):
             x = np.random.uniform(5 * self.env_width / 20, 19 * self.env_width / 20)
             y = np.random.uniform(20 * self.env_height / 30, 29 * self.env_height / 30)
 
-        # 添加随机速度（公式3）
-        speed_x = np.random.uniform(-self.catheter_tip_speed / 4, self.catheter_tip_speed / 4)
-        speed_y = np.random.uniform(-self.catheter_tip_speed / 4, self.catheter_tip_speed / 4)
+        # 添加随机速度
+        speed_x = np.random.uniform(- self.catheter_tip_speed / 4, self.catheter_tip_speed / 4)
+        speed_y = np.random.uniform(- self.catheter_tip_speed / 4, self.catheter_tip_speed / 4)
         radius = np.random.uniform(2, 7)
 
         return {
@@ -94,6 +99,7 @@ class CatheterEnv(gym.Env):
             'radius': radius
         }
 
+
     def _generate_obstacles(self):
         self.obstacles = [
             self._generate_single_obstacle()
@@ -101,39 +107,32 @@ class CatheterEnv(gym.Env):
         ]
 
     def reset(self, seed=None, options=None):
-        """重置环境"""
+        # 必须调用父类reset()以确保兼容性
         super().reset(seed=seed)
 
-        # 随机生成障碍物
-        self.num_obstacles = np.random.randint(6, 18)
+        # 固定障碍物数量
+        self.num_obstacles = 9
         self._randomize_parameters()
+        # 生成随机测试环境中的障碍物参数
         self._generate_obstacles()
 
-        # 随机初始化导管尖端位置
-        self.catheter_tip_pos = np.array([
-            np.random.uniform(0, self.env_width/10),
-            np.random.uniform(9*self.env_height/10, self.env_height)
-        ])
-
-        #随机初始化goal目标位置
-        self.goal_pos = np.array([
-            np.random.uniform(9*self.env_width/10, self.env_width),
-            np.random.uniform(0, self.env_height/10)
-        ])
+        # 固定初始条件: 导管尖端位置和目标位置
+        self.catheter_tip_pos = np.array([50.0, 250.0])  # 初始位置
+        self.goal_pos = np.array([150.0, 50.0])  # 目标位置
 
         # 初始化导管尖端的方向
         catheter_tip_dx = self.goal_pos[0] - self.catheter_tip_pos[0]
         catheter_tip_dy = self.goal_pos[1] - self.catheter_tip_pos[1]
         catheter_tip_initial_theta = np.arctan2(catheter_tip_dy, catheter_tip_dx)  # 初始方向指向目标
-        self.catheter_tip_theta = catheter_tip_initial_theta + + np.random.uniform(-np.pi/24, np.pi/24)
+        self.catheter_tip_theta = catheter_tip_initial_theta + + np.random.uniform(-np.pi / 24, np.pi / 24)
 
         self.current_step = 0
 
-        return self._get_obs(), {}  # 必须返回两个值
+        return self._get_obs(), {}  # 必须返回两个值！
 
 
     def _get_boundary_distance(self):
-    
+
         distances = [
             self.catheter_tip_pos[0],  # 左边界
             self.env_width - self.catheter_tip_pos[0],  # 右边界
@@ -142,13 +141,13 @@ class CatheterEnv(gym.Env):
         ]
         return np.min(distances)
 
-    def _get_obs(self):
 
+    def _get_obs(self):
+        
         # 添加传感器噪声（ III-B节）
         noisy_pos = self.catheter_tip_pos + np.random.normal(0, self.obs_noise['position'], 2)
         noisy_theta = self.catheter_tip_theta + np.random.normal(0, self.obs_noise['orientation'])
 
-        # 基础观测部分1
         base_obs1 = [
             self.catheter_tip_pos[0],  # px
             self.catheter_tip_pos[1],  # py
@@ -162,7 +161,6 @@ class CatheterEnv(gym.Env):
             self._get_boundary_distance(),  # d0
             self.current_step  # ???!!! t未归一化 (归一化)
         ]
-
         # 障碍物部分（54维=3×18）
         obst_obs = []
         for i in range(self.max_obstacles):
@@ -181,25 +179,22 @@ class CatheterEnv(gym.Env):
 
     def step(self, action):
         """环境步进"""
-        # 根据 III-A3节更新方向
+
         delta_theta = action[0] * np.pi / 5  # 限制在±π/6范围内, 这个其实不是很需要???
         self.catheter_tip_theta = (self.catheter_tip_theta + delta_theta) % (2 * np.pi)
 
-        # 计算运动（考虑边界漂移）
-        #drift_angle = np.deg2rad(16)  #  III-B节提到的16度漂移
-        actual_theta = self.catheter_tip_theta #+ drift_angle
-
-        actual_theta_degree = math.degrees(actual_theta)
-        print("current_step: ", self.current_step, "actual_theta_degree: ", actual_theta_degree)
+        actual_theta = self.catheter_tip_theta
 
         # 添加动作噪声（ III-B节）
         actual_theta += np.random.normal(0, 0.01 * abs(delta_theta)+1e-6)
+        print("current_step: ", self.current_step, "actual_theta: ", actual_theta)
 
         # 更新导管尖端位置
         velocity = self.catheter_tip_speed * np.array([
             np.cos(actual_theta),
             np.sin(actual_theta)
         ])
+
         self.catheter_tip_pos += velocity * self.dt
 
         # 更新存在的障碍物位置（动态调整速度和替换越界障碍物）
@@ -209,14 +204,10 @@ class CatheterEnv(gym.Env):
             index_obs += 1
             if index_obs <= self.num_obstacles:
                 # === 动态生成速度（公式3） ===
-                speed_x = np.random.uniform(
-                    -self.catheter_tip_speed / 3,
-                    self.catheter_tip_speed / 3
-                )
-                speed_y = np.random.uniform(
-                    -self.catheter_tip_speed / 3,
-                    self.catheter_tip_speed / 3
-                )
+                speed_x = np.random.uniform( -self.catheter_tip_speed / 3,  self.catheter_tip_speed / 3)
+                #speed_x = np.random.uniform(2, 10)
+                speed_y = np.random.uniform( -self.catheter_tip_speed / 3,  self.catheter_tip_speed / 3)
+                #speed_y = np.random.uniform(2, 10)
                 obst['velocity'] = np.array([speed_x, speed_y])
 
                 # 更新位置
@@ -243,12 +234,10 @@ class CatheterEnv(gym.Env):
         terminated = self._check_collision()
         truncated = (self.current_step >= self.max_steps)
 
-        # 计算奖励
+        # 计算奖励（公式6-10）
         reward = self._calculate_reward(velocity)
 
         self.current_step += 1
-        print(f"Env {self.env_id} - current_step: {self.current_step}", "actual_theta: ", actual_theta)
-        # print("current step: ", self.current_step, ";", "actual_theta: ", actual_theta)
 
         return (
             self._get_obs(),
@@ -261,8 +250,7 @@ class CatheterEnv(gym.Env):
     def _check_collision(self):
         """碰撞检测"""
         # 检查边界碰撞
-        if (self.catheter_tip_pos[0] < 0 or self.catheter_tip_pos[0] > self.env_width or
-                self.catheter_tip_pos[1] < 0 or self.catheter_tip_pos[1] > self.env_height):
+        if (self.catheter_tip_pos[0] < 0 or self.catheter_tip_pos[0] > self.env_width or self.catheter_tip_pos[1] < 0 or self.catheter_tip_pos[1] > self.env_height):
             return True
 
         # 检查障碍物碰撞
@@ -279,30 +267,28 @@ class CatheterEnv(gym.Env):
 
 
     def _calculate_reward(self, velocity):
-
-        # 导航奖励
+        """实现 III-A4节的奖励函数"""
+        # 导航奖励（公式7）
         distance_to_goal = np.linalg.norm(self.catheter_tip_pos - self.goal_pos)
         scale = 25
-        bn = 10 / ( (abs(distance_to_goal))/scale )  # ca=0.1
+        bn = 10 / ((abs(distance_to_goal)) / scale)  # ca=0.1
 
-
-        # 障碍物惩罚
+        # 障碍物惩罚（公式8）
         po = 0
         index_obs = 0
         d_safe = 45
         for obst in self.obstacles:
             index_obs += 1
             if index_obs <= self.num_obstacles:
-                dist = np.linalg.norm(self.catheter_tip_pos - obst['position']) - (obst['radius']+self.catheter_tip_radius)
-                #??? 需不需要只考虑局部的呢?????
-                if dist < d_safe :
-                    #po -= 1.6 * ( 1/(abs(dist))  -  1/(d_safe) )
+                dist = np.linalg.norm(self.catheter_tip_pos - obst['position']) - (obst['radius'] + self.catheter_tip_radius)
+                # ??? 需不需要只考虑局部的呢?????
+                if dist < d_safe:
                     po -= 5 * (1 / (abs(dist)) )
             else:
                 break
 
         # 时间惩罚（公式9）
-        pt = -0.01  #??? 我认为这个计算是有问题的?????
+        pt = -0.01  # kt=0.01
 
         # 速度势能（公式10）
         pv = 0
@@ -316,82 +302,133 @@ class CatheterEnv(gym.Env):
                 dot_product = np.dot(relative_vel, unit_vector)
                 if dot_product < 0:
                     dist = np.linalg.norm(self.catheter_tip_pos - obst['position']) - (obst['radius'] + self.catheter_tip_radius)
-                    #??? 只考虑局部障碍物的影响
+                    # ??? 只考虑局部障碍物的影响
                     if dist < d_safe:
                         pv += 0.009 * dot_product
             else:
                 break
-        print('bn: ', bn, '; po: ', po, '; pt: ', pt, '; pv: ', pv)
+
         return bn + po + pt + pv
 
-from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
-import torch.nn as nn
 
 
+    def render(self):
+        """实现可视化渲染"""
+        if self.fig is None:
+            plt.ion()
+            self.fig, self.ax = plt.subplots(figsize=(10, 15))
+            self.ax.set_xlim(0, self.env_width)
+            self.ax.set_ylim(0, self.env_height)
+            self.ax.set_title("Catheter Tip Navigation Simulation")
 
-# 训练部分
-def train():
-    # 创建并行环境
-    #env = DummyVecEnv([lambda: CatheterEnv() for _ in range(8)])
-    env = CatheterEnv()
-    env = DummyVecEnv([lambda: env])  # 单环境
+        # 清除上一帧内容
+        self.ax.clear()
+        self.ax.set_xlim(0, self.env_width)
+        self.ax.set_ylim(0, self.env_height)
 
-    # 强制使用新版接口
-    from stable_baselines3.common.env_checker import check_env
-    check_env(env.envs[0])  # 验证单个环境
+        # 绘制微型尖端
+        catheter_tip_circle = plt.Circle(
+            self.catheter_tip_pos,
+            self.catheter_tip_radius,
+            color='blue',
+            alpha=0.8,
+            label='Catheter Tip'
+        )
+        self.ax.add_patch(catheter_tip_circle)
+
+        # 绘制方向箭头
+        arrow_length = 5
+        dx = arrow_length * np.cos(self.catheter_tip_theta)
+        dy = arrow_length * np.sin(self.catheter_tip_theta)
+        self.ax.arrow(
+            self.catheter_tip_pos[0], self.catheter_tip_pos[1],
+            dx, dy,
+            head_width=3, head_length=3,
+            fc='red', ec='red'
+        )
+
+        # 绘制目标区域
+        goal_circle = plt.Circle(
+            self.goal_pos,
+            self.goal_radius,
+            color='green',
+            alpha=0.3,
+            label='Goal'
+        )
+
+        self.ax.add_patch(goal_circle)
+
+        # 绘制障碍物
+        for obst in self.obstacles:
+            obst_circle = plt.Circle(
+                obst['position'],
+                obst['radius'],
+                color='orange',
+                alpha=0.5,
+                label='Obstacle'
+            )
+            self.ax.add_patch(obst_circle)
+            # 绘制速度向量
+            self.ax.arrow(
+                obst['position'][0], obst['position'][1],
+                obst['velocity'][0] * 5, obst['velocity'][1] * 5,  # 放大速度显示
+                head_width=3, head_length=5,
+                fc='black', ec='black'
+            )
+
+        # 添加图例和标注
+        self.ax.legend(loc='upper right')
+        self.ax.text(5, 290, f"Step: {self.current_step}/{self.max_steps}",
+                     fontsize=10, bbox=dict(facecolor='white', alpha=0.8))
+
+        print('current step: ', self.current_step)
+
+        #plt.draw()
+        # 强制刷新
+        self.fig.canvas.draw_idle()
+        self.fig.canvas.flush_events()
+        plt.pause(0.15)  # 至少50ms
 
 
-    # 定义策略网络和价值网络的结构
-    policy_kwargs = dict(
-        net_arch=[
-            #dict(vf=[256, 128], pi=[256, 128]),  # 前几层使用 ReLU
-            #dict(vf=[128, 64], pi=[128, 64])  # 后几层使用 RBF
-        ],
-        activation_fn=nn.GELU,  # 统一使用GELU激活
-        ortho_init=True,
+def run_simulation(model_path="ppo_catheter_tip_raw.zip"):
+    # 创建测试环境
+    test_env = TestCatheterEnv(
+        render_mode="human"
     )
 
-    # 定义PPO模型（使用MlpPolicy）
-    model = PPO(
-        "MlpPolicy",
-        env,
-        policy_kwargs=policy_kwargs,  # 将网络结构通过policy_kwargs传递
-        verbose=1,
-        learning_rate=1e-5,
-        n_steps=2048,
-        batch_size=256,
-        n_epochs=15, #每个数据批次的训练次数。
-        gamma=0.7, #越大越重视长期奖励
-        gae_lambda=0.95,
-        clip_range=0.13, #PPO 的裁剪范围（Clipping Parameter）。
-        target_kl=0.032, #控制策略更新幅度
-        device='cuda'
-    )
+    # 加载训练好的模型
+    model = PPO.load(model_path)
 
-    # 设置评估回调
-    eval_callback = EvalCallback(
-        env,
-        best_model_save_path='./logs/',
-        log_path='./logs/',
-        eval_freq=10000,
-        deterministic=True,
-        render=False
-    )
+    # 运行测试循环
+    obs, _ = test_env.reset() #进行环境的设置/重置
+    done = False
+    total_reward = 0
+    index_circle = 0
+    while not done:
+        action, _ = model.predict(obs, deterministic=True)
+        obs, reward, terminated, truncated, info = test_env.step(action)
+        done = terminated or truncated
+        total_reward += reward
 
-    # 开始训练（1M steps）
-    model.learn(
-        total_timesteps=1_000_000,
-        callback=eval_callback,
-        progress_bar=True
-    )
+        index_circle += 1
+        print('current index_circle: ', index_circle)
 
-    # 保存模型
-    model.save("ppo_catheter_tip_raw")  # 生成 ppo_catheter_tip_raw.zip
-    #env.save("vec_normalize.pkl")
+        test_env.render()  # 渲染当前状态
+
+        if done:
+            if terminated:
+                print("Episode terminated due to collision!")
+            else:
+                distance = np.linalg.norm(test_env.catheter_tip_pos - test_env.goal_pos)
+                if distance <= test_env.goal_radius:
+                    print("Reached goal successfully!")
+                else:
+                    print("Time out without reaching goal.")
+            print(f"Total reward: {total_reward:.2f}")
+            plt.ioff()
+            plt.show()
+        print('finish the current index_circle: ', index_circle)
 
 
 if __name__ == "__main__":
-    # 训练模型
-    train()
-    print("finish training !!!")
-
+    run_simulation()

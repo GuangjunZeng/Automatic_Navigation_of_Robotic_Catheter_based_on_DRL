@@ -279,14 +279,14 @@ class CatheterEnv(gym.Env):
 
 
     def _calculate_reward(self, velocity):
-
-        # 导航奖励
+        """实现 III-A4节的奖励函数"""
+        # 导航奖励（公式7）
         distance_to_goal = np.linalg.norm(self.catheter_tip_pos - self.goal_pos)
         scale = 25
         bn = 10 / ( (abs(distance_to_goal))/scale )  # ca=0.1
 
 
-        # 障碍物惩罚
+        # 障碍物惩罚（公式8）
         po = 0
         index_obs = 0
         d_safe = 45
@@ -329,7 +329,7 @@ import torch.nn as nn
 
 
 
-# 训练部分
+# 训练部分（对应 III-C节）
 def train():
     # 创建并行环境
     #env = DummyVecEnv([lambda: CatheterEnv() for _ in range(8)])

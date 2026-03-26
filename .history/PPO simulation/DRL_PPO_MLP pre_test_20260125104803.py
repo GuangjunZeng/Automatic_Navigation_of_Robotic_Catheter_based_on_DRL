@@ -9,7 +9,7 @@ from stable_baselines3.common.callbacks import EvalCallback
 class MicroDrillEnv(gym.Env):
     """
     自定义微型钻头导航环境
-    实现 III-A节描述的环境配置
+
     """
     metadata = {"render_modes": ["human"], "render_fps": 30}
 
@@ -269,7 +269,7 @@ class MicroDrillEnv(gym.Env):
 
 
     def _calculate_reward(self, velocity):
-        """实现 III-A4节的奖励函数"""
+
         # 导航奖励（公式7）
         distance_to_goal = np.linalg.norm(self.drill_pos - self.goal_pos)
         bn = 0.1 / (distance_to_goal ** 2 + 1e-6)  # ca=0.1

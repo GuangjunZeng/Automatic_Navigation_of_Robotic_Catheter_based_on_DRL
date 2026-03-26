@@ -30,7 +30,7 @@ class CatheterEnv(gym.Env):
         self.num_obstacles = 8  # 初始障碍物数量
         self.max_steps = 3000  # 最大时间步
 
-
+        # 根据 表II设置随机化范围
         self.param_ranges = {
             'catheter_tip_speed': (9, 15),
             'num_obstacles': (6, 18),
@@ -48,7 +48,7 @@ class CatheterEnv(gym.Env):
             shape=(self.total_obs_dim,),
             dtype=np.float32)
 
-
+        # 根据 III-A3节定义动作空间
         self.action_space = spaces.Box(
             low= -1, high= 1, shape=(1,), dtype=np.float32)
 
@@ -133,7 +133,7 @@ class CatheterEnv(gym.Env):
 
 
     def _get_boundary_distance(self):
-    
+        """计算到最近边界的距离（ III-A2节do参数）"""
         distances = [
             self.catheter_tip_pos[0],  # 左边界
             self.env_width - self.catheter_tip_pos[0],  # 右边界
@@ -143,7 +143,7 @@ class CatheterEnv(gym.Env):
         return np.min(distances)
 
     def _get_obs(self):
-
+        """根据公式(4)构造观察向量"""
         # 添加传感器噪声（ III-B节）
         noisy_pos = self.catheter_tip_pos + np.random.normal(0, self.obs_noise['position'], 2)
         noisy_theta = self.catheter_tip_theta + np.random.normal(0, self.obs_noise['orientation'])
@@ -243,7 +243,7 @@ class CatheterEnv(gym.Env):
         terminated = self._check_collision()
         truncated = (self.current_step >= self.max_steps)
 
-        # 计算奖励
+        # 计算奖励（公式6-10）
         reward = self._calculate_reward(velocity)
 
         self.current_step += 1
@@ -279,14 +279,14 @@ class CatheterEnv(gym.Env):
 
 
     def _calculate_reward(self, velocity):
-
-        # 导航奖励
+        """实现 III-A4节的奖励函数"""
+        # 导航奖励（公式7）
         distance_to_goal = np.linalg.norm(self.catheter_tip_pos - self.goal_pos)
         scale = 25
         bn = 10 / ( (abs(distance_to_goal))/scale )  # ca=0.1
 
 
-        # 障碍物惩罚
+        # 障碍物惩罚（公式8）
         po = 0
         index_obs = 0
         d_safe = 45
@@ -329,7 +329,7 @@ import torch.nn as nn
 
 
 
-# 训练部分
+# 训练部分（对应 III-C节）
 def train():
     # 创建并行环境
     #env = DummyVecEnv([lambda: CatheterEnv() for _ in range(8)])

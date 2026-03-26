@@ -9,7 +9,7 @@ from stable_baselines3.common.callbacks import EvalCallback
 class MicroDrillEnv(gym.Env):
     """
     自定义微型尖端导航环境
-    实现 III-A节描述的环境配置
+
     """
     metadata = {"render_modes": ["human"], "render_fps": 30}
 
@@ -55,7 +55,7 @@ class MicroDrillEnv(gym.Env):
         #???这个重复多余了吧？   这个不是固定的，放在init中不合适。但多着也没影响
 
     def _randomize_parameters(self):
-        """实现 III-B节的域随机化"""
+
         # 从表II中采样参数
         self.microdrill_speed = np.random.uniform(*self.param_ranges['microdrill_speed'])
         self.num_obstacles = np.random.randint(*self.param_ranges['num_obstacles'])
@@ -269,7 +269,7 @@ class MicroDrillEnv(gym.Env):
 
 
     def _calculate_reward(self, velocity):
-        """实现 III-A4节的奖励函数"""
+
         # 导航奖励（公式7）
         distance_to_goal = np.linalg.norm(self.drill_pos - self.goal_pos)
         bn = 0.1 / (distance_to_goal ** 2 + 1e-6)  # ca=0.1

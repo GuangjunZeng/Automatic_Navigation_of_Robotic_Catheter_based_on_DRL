@@ -46,7 +46,6 @@ class MicroDrillEnv(gym.Env):
             shape=(self.total_obs_dim,),
             dtype=np.float32)
 
-        # 根据 III-A3节定义动作空间
         self.action_space = spaces.Box(
             low= 0, high= 2.0, shape=(1,), dtype=np.float32)
 
@@ -55,8 +54,6 @@ class MicroDrillEnv(gym.Env):
         #???这个重复多余了吧？   这个不是固定的，放在init中不合适。但多着也没影响
 
     def _randomize_parameters(self):
-        """实现 III-B节的域随机化"""
-        # 从表II中采样参数
         self.microdrill_speed = np.random.uniform(*self.param_ranges['microdrill_speed'])
         self.num_obstacles = np.random.randint(*self.param_ranges['num_obstacles'])
         self.goal_radius = np.random.uniform(*self.param_ranges['goal_radius'])
